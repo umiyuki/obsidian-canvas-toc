@@ -1,7 +1,7 @@
 {
     "id": "obsidian-canvas-toc",
     "name": "Canvas Table of Contents",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "minAppVersion": "1.1.0",
     "description": "Displays a list of groups and cards in the currently open canvas.",
     "author": "Umiyuki",

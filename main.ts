@@ -1,5 +1,17 @@
-import { ItemView, Plugin, WorkspaceLeaf } from "obsidian";
+import { ItemView, Plugin, WorkspaceLeaf, PluginSettingTab, Setting } from "obsidian";
 import { AllCanvasNodeData } from "obsidian/canvas";
+
+interface CanvasExplorerSettings {
+    showGroups: boolean;
+    showCards: boolean;
+    truncateNames: boolean;
+}
+
+const DEFAULT_SETTINGS: CanvasExplorerSettings = {
+    showGroups: true,
+    showCards: true,
+    truncateNames: false
+};
 
 function focusOnNode(canvas: any, node: any) {
     canvas.zoomToBbox({
@@ -12,8 +24,11 @@ function focusOnNode(canvas: any, node: any) {
 
 export default class CanvasExplorer extends Plugin {
     view: CanvasExplorerView;
+    settings: CanvasExplorerSettings;
 
     async onload() {
+        await this.loadSettings();
+
         this.registerView(
             'canvas-explorer',
             (leaf: WorkspaceLeaf) => {
@@ -23,8 +38,8 @@ export default class CanvasExplorer extends Plugin {
         );
 
         this.addCommand({
-            id: 'show-canvas-toc',
-            name: 'Show Canvas Table of Contents',
+            id: 'show-canvas-explorer',
+            name: 'Show Canvas Explorer',
             callback: () => {
                 this.activateView();
             }
@@ -35,6 +50,9 @@ export default class CanvasExplorer extends Plugin {
                 this.view.onCanvasChange();
             }
         }));
+
+        this.addStyle();
+        this.addSettingTab(new CanvasExplorerSettingTab(this.app, this));
     }
 
     async activateView() {
@@ -52,6 +70,83 @@ export default class CanvasExplorer extends Plugin {
         }
         return null;
     }
+
+    addStyle() {
+        const css = `
+      .canvas-explorer {
+        padding: 10px;
+      }
+
+      .canvas-explorer h2 {
+        margin-bottom: 5px;
+        font-size: var(--font-ui-small);
+        font-weight: normal;
+        color: var(--text-muted);
+      }
+
+      .canvas-explorer ul {
+        margin-top: 0;
+        margin-bottom: 20px;
+        padding-left: 20px;
+      }
+
+      .canvas-explorer li {
+        margin-bottom: 5px;
+      }
+
+      .canvas-explorer a {
+        color: var(--text-normal);
+        text-decoration: none;
+      }
+
+      .canvas-explorer a:hover {
+        text-decoration: underline;
+      }
+
+      .canvas-explorer button {
+        margin-bottom: 20px;
+        padding: 5px 10px;
+        border: none;
+        border-radius: 5px;
+        background-color: var(--interactive-accent);
+        color: var(--text-on-accent);
+        cursor: pointer;
+      }
+
+      .canvas-explorer button:hover {
+        background-color: var(--interactive-accent-hover);
+      }
+    `;
+        const styleEl = document.createElement('style');
+        styleEl.id = 'canvas-explorer-styles';
+        styleEl.textContent = css;
+        document.head.appendChild(styleEl);
+    }
+
+    async loadSettings() {
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    }
+
+    async saveSettings() {
+        await this.saveData(this.settings);
+    }
+
+    getLocalizedString(key: string): string {
+        const lang = this.app.vault.getConfig("userLanguage");
+        const strings: Record<string, Record<string, string>> = {
+            en: {
+                "groups": "Groups",
+                "cards": "Cards",
+                "refresh": "Refresh",
+            },
+            ja: {
+                "groups": "グループ",
+                "cards": "カード",
+                "refresh": "更新",
+            },
+        };
+        return strings[lang]?.[key] || strings["en"][key];
+    }
 }
 
 class CanvasExplorerView extends ItemView {
@@ -60,6 +155,7 @@ class CanvasExplorerView extends ItemView {
     constructor(leaf: WorkspaceLeaf, plugin: CanvasExplorer) {
         super(leaf);
         this.plugin = plugin;
+        this.containerEl.addClass('canvas-explorer');
     }
 
     getViewType(): string {
@@ -76,7 +172,7 @@ class CanvasExplorerView extends ItemView {
     }
 
     addUpdateButton() {
-        const updateButton = this.containerEl.createEl('button', { text: 'Refresh' });
+        const updateButton = this.containerEl.createEl('button', { text: this.plugin.getLocalizedString("refresh") });
         updateButton.addEventListener('click', () => this.onCanvasChange());
     }
 
@@ -91,27 +187,83 @@ class CanvasExplorerView extends ItemView {
             let groups = canvas.data.nodes.filter((a: AllCanvasNodeData) => a.type == "group");
             let cards = canvas.data.nodes.filter((a: AllCanvasNodeData) => a.type == "text" || a.type == "file");
 
-            container.createEl('h2', { text: 'Groups' });
-            let groupList = container.createEl('ul');
-            groups.forEach((group: AllCanvasNodeData) => {
-                let listItem = groupList.createEl('li');
-                listItem.createEl('a', { href: '#', text: <string>group.label });
-                listItem.onClickEvent(() => focusOnNode(canvas, group));
-            });
+            if (this.plugin.settings.showGroups) {
+                container.createEl('h2', { text: this.plugin.getLocalizedString("groups") });
+                let groupList = container.createEl('ul');
+                groups.forEach((group: AllCanvasNodeData) => {
+                    let listItem = groupList.createEl('li');
+                    let groupName = this.plugin.settings.truncateNames ?
+                        ((<string>group.label).length > 16 ? (<string>group.label).substring(0, 16) + "..." : <string>group.label) :
+                        <string>group.label;
+                    listItem.createEl('a', { href: '#', text: groupName });
+                    listItem.onClickEvent(() => focusOnNode(canvas, group));
+                });
+            }
 
-            container.createEl('h2', { text: 'Cards' });
-            let cardList = container.createEl('ul');
-            cards.forEach((card: AllCanvasNodeData) => {
-                let listItem = cardList.createEl('li');
-                listItem.createEl('a', { href: '#', text: card.type == "text" ? card.text : card.file });
-                listItem.onClickEvent(() => focusOnNode(canvas, card));
-            });
+            if (this.plugin.settings.showCards) {
+                container.createEl('h2', { text: this.plugin.getLocalizedString("cards") });
+                let cardList = container.createEl('ul');
+                cards.forEach((card: AllCanvasNodeData) => {
+                    let listItem = cardList.createEl('li');
+                    let cardName = this.plugin.settings.truncateNames ?
+                        (card.type == "text" ?
+                            (card.text.length > 16 ? card.text.substring(0, 16) + "..." : card.text) :
+                            (card.file.length > 16 ? card.file.substring(0, 16) + "..." : card.file)) :
+                        (card.type == "text" ? card.text : card.file);
+                    listItem.createEl('a', { href: '#', text: cardName });
+                    listItem.onClickEvent(() => focusOnNode(canvas, card));
+                });
+            }
         } else {
             container.createEl('p', { text: 'Open a canvas to see its groups and cards.' });
         }
     }
+}
 
-    async onClose() {
-        // Nothing to clean up
+class CanvasExplorerSettingTab extends PluginSettingTab {
+    plugin: CanvasExplorer;
+
+    constructor(app: App, plugin: CanvasExplorer) {
+        super(app, plugin);
+        this.plugin = plugin;
+    }
+
+    display(): void {
+        const { containerEl } = this;
+
+        containerEl.empty();
+
+        new Setting(containerEl)
+            .setName('Show Groups')
+            .setDesc('Show the list of groups')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showGroups)
+                .onChange(async (value) => {
+                    this.plugin.settings.showGroups = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.view.onCanvasChange();
+                }));
+
+        new Setting(containerEl)
+            .setName('Show Cards')
+            .setDesc('Show the list of cards')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showCards)
+                .onChange(async (value) => {
+                    this.plugin.settings.showCards = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.view.onCanvasChange();
+                }));
+
+        new Setting(containerEl)
+            .setName('Truncate Names')
+            .setDesc('Truncate the names of groups and cards to 16 characters')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.truncateNames)
+                .onChange(async (value) => {
+                    this.plugin.settings.truncateNames = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.view.onCanvasChange();
+                }));
     }
 }
