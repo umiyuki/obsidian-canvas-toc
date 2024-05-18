@@ -190,6 +190,10 @@ class CanvasExplorerView extends ItemView {
             if (this.plugin.settings.showGroups) {
                 container.createEl('h2', { text: this.plugin.getLocalizedString("groups") });
                 let groupList = container.createEl('ul');
+
+                // Sort groups by name
+                groups.sort((a, b) => (<string>a.label).localeCompare(<string>b.label));
+
                 groups.forEach((group: AllCanvasNodeData) => {
                     let listItem = groupList.createEl('li');
                     let groupName = this.plugin.settings.truncateNames ?
@@ -203,6 +207,14 @@ class CanvasExplorerView extends ItemView {
             if (this.plugin.settings.showCards) {
                 container.createEl('h2', { text: this.plugin.getLocalizedString("cards") });
                 let cardList = container.createEl('ul');
+
+                // Sort cards by name
+                cards.sort((a, b) => {
+                    let aName = a.type == "text" ? a.text : a.file;
+                    let bName = b.type == "text" ? b.text : b.file;
+                    return aName.localeCompare(bName);
+                });
+
                 cards.forEach((card: AllCanvasNodeData) => {
                     let listItem = cardList.createEl('li');
                     let cardName = this.plugin.settings.truncateNames ?
